@@ -1,0 +1,12 @@
+{
+  "name": "ror-voice-server",
+  "version": "1.0.0",
+  "description": "Voice chat relay server for Return of Reckoning",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
