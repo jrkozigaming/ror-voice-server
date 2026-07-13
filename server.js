@@ -1,5 +1,10 @@
 const http = require('http');
 const { WebSocketServer, WebSocket } = require('ws');
+const url = require('url');
+const crypto = require('crypto');
+
+// Cryptographic handshake secret key (keeps connections private and authentic)
+const SECRET_KEY = 'RoRVoice_Auth_2026_Secure_Token!';
 
 // Configure port (Render/Railway sets PORT env)
 const PORT = process.env.PORT || 8080;
@@ -21,8 +26,41 @@ const wss = new WebSocketServer({ server });
 const customRoomOwners = new Map(); // roomName -> ownerUser
 const customRoomAllowed = new Map(); // roomName -> Set of allowedUsers
 
-wss.on('connection', (ws) => {
-    console.log('New client connected');
+function validateHandshake(req) {
+    try {
+        const parsedUrl = url.parse(req.url, true);
+        const t = parseInt(parsedUrl.query.t, 10);
+        const h = parsedUrl.query.h;
+
+        if (isNaN(t) || !h) {
+            return false;
+        }
+
+        // Prevent replay attacks using a time window of +/- 3 minutes
+        const currentMinutes = Math.floor(Date.now() / 1000 / 60);
+        if (Math.abs(currentMinutes - t) > 3) {
+            console.log(`[AUTH FAIL] Time skew / replay timeout. Client: ${t}, Server: ${currentMinutes}`);
+            return false;
+        }
+
+        const raw = `${t}_${SECRET_KEY}`;
+        const calculatedHash = crypto.createHash('sha256').update(raw).digest('hex');
+
+        return calculatedHash === h;
+    } catch (err) {
+        console.error('Handshake validation error:', err);
+        return false;
+    }
+}
+
+wss.on('connection', (ws, req) => {
+    if (!validateHandshake(req)) {
+        console.log('Connection rejected: invalid or missing authentication handshake.');
+        ws.close(4001, 'Unauthorized handshake');
+        return;
+    }
+
+    console.log('New client connected and authenticated');
     ws.room = null;
     ws.user = null;
     ws.pendingRoom = null;
